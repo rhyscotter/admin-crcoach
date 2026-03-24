@@ -11,14 +11,11 @@
       --border:rgba(255,255,255,.10);
       --text:#fff;
       --muted:rgba(255,255,255,.62);
-
       --accent:#7B2EFF;
       --accent2:#B266FF;
-      --clubGlow: rgba(123,46,255,.18);
-
+      --clubGlow:rgba(123,46,255,.18);
       --ok:#19c37d;
       --danger:#ff4d4f;
-      --radius:22px;
     }
 
     *{box-sizing:border-box}
@@ -31,9 +28,7 @@
       font-family:Arial,sans-serif;
     }
 
-    body{
-      min-height:100vh;
-    }
+    body{min-height:100vh}
 
     .stage{
       min-height:100vh;
@@ -123,11 +118,20 @@
       line-height:1.45;
     }
 
+    .topPills{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      flex-wrap:wrap;
+      margin-top:16px;
+      margin-bottom:14px;
+    }
+
     .pillRow{
       display:flex;
       gap:10px;
       flex-wrap:wrap;
-      margin-top:16px;
       align-items:center;
     }
 
@@ -154,16 +158,6 @@
 
     .glow{
       box-shadow:0 0 0 1px rgba(255,255,255,.04), 0 0 32px var(--clubGlow);
-    }
-
-    .topPills{
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      gap:12px;
-      flex-wrap:wrap;
-      margin-top:16px;
-      margin-bottom:14px;
     }
 
     .ctaRow{
@@ -325,8 +319,7 @@
       margin-bottom:8px;
     }
 
-    .input,
-    .select{
+    .input{
       width:100%;
       border:none;
       outline:none;
@@ -342,14 +335,61 @@
       font-weight:700;
     }
 
-    .select{
-      min-height:150px;
+    .teamsWrap{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      margin-top:4px;
     }
 
-    .select option{
-      background:#111;
+    .teamChip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:10px 12px;
+      border-radius:999px;
+      background:rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.14);
       color:#fff;
-      padding:8px;
+      cursor:pointer;
+      transition:.15s ease;
+      user-select:none;
+      font-size:13px;
+      font-weight:800;
+      text-transform:uppercase;
+      letter-spacing:.5px;
+    }
+
+    .teamChip:hover{
+      transform:translateY(-1px);
+      background:rgba(255,255,255,.08);
+      box-shadow:0 0 18px var(--clubGlow);
+    }
+
+    .teamChip.active{
+      border-color:var(--accent);
+      background:rgba(255,255,255,.1);
+      box-shadow:0 0 0 1px rgba(255,255,255,.04), 0 0 20px var(--clubGlow);
+    }
+
+    .teamDot{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      background:rgba(255,255,255,.28);
+      transition:.15s ease;
+      flex:0 0 auto;
+    }
+
+    .teamChip.active .teamDot{
+      background:var(--accent);
+      box-shadow:0 0 14px var(--clubGlow);
+    }
+
+    .emptyTeams{
+      color:rgba(255,255,255,.5);
+      font-size:13px;
+      padding:4px 0;
     }
 
     .actions{
@@ -437,7 +477,8 @@
 
             <div class="field full">
               <div class="label">Assign Teams</div>
-              <select class="select" id="teamsTags" multiple></select>
+              <div class="teamsWrap" id="teamsTags"></div>
+              <div class="tiny">Click as many teams as you want.</div>
             </div>
           </div>
 
@@ -472,7 +513,9 @@
       clubSlug: "",
       clubName: "",
       showAllCoachesUrl: "",
-      teams: []
+      teams: [],
+      selectedTeamIds: [],
+      theme: null
     };
 
     function safe(v){
@@ -487,9 +530,8 @@
       return String(v || "").trim().toLowerCase();
     }
 
-    function getThemeFromClubSlug(clubSlug){
+    function fallbackThemeFromClubSlug(clubSlug){
       const slug = lower(clubSlug);
-
       const map = {
         mds: {
           accent: "#7B2EFF",
@@ -517,16 +559,18 @@
           glow: "rgba(123,46,255,.18)"
         }
       };
-
       return map[slug] || map.default;
     }
 
-    function applyThemeFromClubSlug(clubSlug){
-      const theme = getThemeFromClubSlug(clubSlug);
+    function applyTheme(theme, clubSlug){
+      const finalTheme = theme && theme.accent
+        ? theme
+        : fallbackThemeFromClubSlug(clubSlug);
+
       const r = document.documentElement.style;
-      r.setProperty("--accent", theme.accent);
-      r.setProperty("--accent2", theme.accent2);
-      r.setProperty("--clubGlow", theme.glow);
+      r.setProperty("--accent", finalTheme.accent || "#7B2EFF");
+      r.setProperty("--accent2", finalTheme.accent2 || finalTheme.accent || "#B266FF");
+      r.setProperty("--clubGlow", finalTheme.glow || "rgba(123,46,255,.18)");
     }
 
     function setStatus(msg, type){
@@ -537,22 +581,45 @@
       if (type === "err") $statusText.classList.add("err");
     }
 
+    function toggleTeam(teamId){
+      const id = String(teamId || "");
+      if (!id) return;
+
+      if (state.selectedTeamIds.includes(id)) {
+        state.selectedTeamIds = state.selectedTeamIds.filter(x => x !== id);
+      } else {
+        state.selectedTeamIds = [...state.selectedTeamIds, id];
+      }
+
+      renderTeams(state.teams);
+    }
+
     function renderTeams(teams){
       const arr = Array.isArray(teams) ? teams : [];
       $teamsTags.innerHTML = "";
 
+      if (!arr.length) {
+        $teamsTags.innerHTML = '<div class="emptyTeams">No teams found for this club.</div>';
+        return;
+      }
+
       arr.forEach(team => {
-        const opt = document.createElement("option");
-        opt.value = team.value || "";
-        opt.textContent = team.label || "(Unnamed)";
-        $teamsTags.appendChild(opt);
+        const id = String(team.value || "");
+        const label = team.label || "(Unnamed)";
+        const active = state.selectedTeamIds.includes(id);
+
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = `teamChip${active ? " active" : ""}`;
+        chip.innerHTML = `<span class="teamDot"></span><span>${label}</span>`;
+        chip.addEventListener("click", () => toggleTeam(id));
+
+        $teamsTags.appendChild(chip);
       });
     }
 
     function getSelectedTeamIds(){
-      return Array.from($teamsTags.selectedOptions || [])
-        .map(opt => opt.value)
-        .filter(Boolean);
+      return Array.isArray(state.selectedTeamIds) ? state.selectedTeamIds : [];
     }
 
     function post(type, payload = {}){
@@ -591,8 +658,10 @@
         state.clubName = safe(data.clubName || data.clubSlug || "Club");
         state.showAllCoachesUrl = safe(data.showAllCoachesUrl || "");
         state.teams = Array.isArray(data.teams) ? data.teams : [];
+        state.theme = data.theme || null;
+        state.selectedTeamIds = [];
 
-        applyThemeFromClubSlug(state.clubSlug);
+        applyTheme(state.theme, state.clubSlug);
 
         $clubNamePill.textContent = state.clubName || "Club";
 
@@ -618,7 +687,8 @@
           $coachFirstNameInput.value = "";
           $coachLastNameInput.value = "";
           $coachPhoneInput.value = "";
-          Array.from($teamsTags.options).forEach(opt => { opt.selected = false; });
+          state.selectedTeamIds = [];
+          renderTeams(state.teams);
         }
         return;
       }
